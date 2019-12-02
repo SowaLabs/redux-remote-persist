@@ -1,0 +1,483 @@
+// @flow
+import { isEmpty, isEqual, isObject, merge as _merge, transform } from 'lodash'
+import {
+  combineLatest,
+  concat,
+  forkJoin,
+  from,
+  fromEventPattern,
+  merge,
+  of,
+  race,
+  Subject,
+} from 'rxjs'
+
+import {
+  catchError,
+  concatMap,
+  delay,
+  distinctUntilChanged,
+  exhaustMap,
+  filter,
+  ignoreElements,
+  map,
+  mapTo,
+  mergeMap,
+  mergeScan,
+  multicast,
+  pluck,
+  publishBehavior,
+  refCount,
+  startWith,
+  switchMap,
+  take,
+  takeUntil,
+  withLatestFrom,
+} from 'rxjs/operators'
+import { combineEpics, ofType } from 'redux-observable'
+
+import * as actions from './actions'
+
+import type {
+  StateSelector,
+  KeyStateSelectors,
+  AjaxErrorHandler,
+  Headers,
+  UrlResolver,
+  RemotePersistConfig,
+} from './types'
+
+// Rehydrate states selected by rehydrateSelectors from local and remote storage
+// in order state < localState < remoteState.
+// Local storage is useful when a new property is not yet persisted by remote storage
+// and so can still have the persistence behavior.
+export const createRehydrateEpic = (rehydrateSelectors: KeyStateSelectors) => (
+  action$: any,
+  state$: any
+) =>
+  action$.pipe(
+    ofType(actions.REHYDRATE),
+    switchMap(() =>
+      merge(
+        // first fetch from remote and local storage
+        of(
+          actions.remoteStorageFetchRequest(),
+          actions.localStorageFetchRequest()
+        ),
+        // listen for storage fetch completions
+        forkJoin(
+          action$.pipe(
+            ofType(
+              actions.REMOTE_STORAGE_FETCH_SUCCESS,
+              actions.REMOTE_STORAGE_FETCH_FAILURE
+            ),
+            take(1)
+          ),
+          action$.pipe(
+            ofType(
+              actions.LOCAL_STORAGE_FETCH_SUCCESS,
+              actions.LOCAL_STORAGE_FETCH_FAILURE
+            ),
+            take(1)
+          )
+        ).pipe(
+          // normalize 'value' props so it can be consumed by reducers; i.e.
+          // from: { bisonapp-settings: { themeName: { value: 'light' } }, { ... } }
+          // into: { bisonapp-settings: { themeName: 'light' }, ... }
+          map(([{ payload: remoteState = {} }, { payload: localState = {} }]) =>
+            [remoteState, localState].map(state =>
+              Object.entries(state).reduce(
+                (acc, [key, val]) => ({
+                  ...acc,
+                  [key]: Object.entries(val).reduce(
+                    (acc2, [key2, val2]) => ({
+                      ...acc2,
+                      [key2]: (val2: any).value,
+                    }),
+                    {}
+                  ),
+                }),
+                {}
+              )
+            )
+          ),
+          switchMap(([remoteState, localState]) =>
+            concat(
+              // gather all states we are interested in
+              from(Object.keys(rehydrateSelectors)).pipe(
+                mergeMap(stateKey =>
+                  of(state$.value).pipe(
+                    // get the current state
+                    map(rehydrateSelectors[stateKey]),
+                    // tap((state) =>
+                    //   console.tron.log({
+                    //     state,
+                    //     remoteState: remoteState[stateKey],
+                    //     localState: localState[stateKey],
+                    //   }),
+                    // ),
+
+                    // merge states from left to right: state < localState < remoteState
+                    // lodash merge skips source properties that resolve to undefined, i.e.
+                    // _.merge ({}, { a: 'a'  }, { a: undefined }) → { a: "a" }
+                    // which is exactly what is needed, in case remote state
+                    // doesn't yet have a specific property registered
+                    map(state =>
+                      _merge(
+                        {},
+                        state,
+                        localState[stateKey],
+                        remoteState[stateKey]
+                      )
+                    ),
+                    map(state => actions.rehydrateReducer(stateKey, state))
+                  )
+                )
+              ),
+              // start persisting with remoteState as initial value, since
+              // we first want to update remote storage with rehydrated state
+              of(actions.persist(remoteState))
+            )
+          )
+        )
+      )
+    )
+  )
+
+// persist states selected by persistSelectors to remote and local storage
+export const createPersistEpic = (
+  persistSelectors: KeyStateSelectors,
+  commonHeaders: Headers,
+  getAccessToken: StateSelector,
+  getBaseUrl: UrlResolver,
+  getPersistState: StateSelector,
+  handleAjaxError: AjaxErrorHandler,
+  dueTime: number
+) => (action$: any, state$: any, { ajax }: any) =>
+  // use combineLatest - combines latest items emitted by each observable (all reducers that are to be persisted)
+  // https://medium.com/swift-india/rxswift-combining-operators-combinelatest-zip-and-withlatestfrom-521d2eca5460
+  // https://rxjs-dev.firebaseapp.com/api/index/function/combineLatest
+
+  action$.pipe(
+    // kick off remote persistance
+    ofType(actions.PERSIST),
+    // supply value from remote storage, so we can diff it with rehydrated state (and update remote with difference)
+    // this is useful if local reducer introduces new substate, and we need to synchronize it with remote storage
+    switchMap(({ initialState }) => {
+      const stateChange$ = combineLatest(
+        Object.keys(persistSelectors).map(stateKey =>
+          state$.pipe(
+            map(persistSelectors[stateKey]),
+            // === equality check
+            distinctUntilChanged(),
+            // deep equal check (when reducer creates a new object with the same values)
+            distinctUntilChanged(isEqual),
+            map(state => ({ [stateKey]: state }))
+          )
+        )
+      ).pipe(
+        // merge all states into object
+        map(state => state.reduce((acc, s) => ({ ...acc, ...s }), {})),
+        // check for isFlushing state and hold off publishing updates until flush finishes (is false)
+        switchMap(state =>
+          state$.pipe(
+            distinctUntilChanged(),
+            map(getPersistState),
+            pluck('isFlushing'),
+            filter(isFlushing => isFlushing === false),
+            take(1),
+            mapTo(state)
+          )
+        ),
+        // Uses BehaviorSubject to make sure all subsribers get the last value,
+        // otherwise, since subscribe is immediate in epic, only the first observable
+        // in merge below would get a value. Only on the second run would both get a value.
+        publishBehavior(undefined),
+        refCount(),
+        // wait until we actually get a state through
+        filter(Boolean)
+      )
+
+      const stateUpdate$ = stateChange$.pipe(
+        // debounce
+        switchMap(state =>
+          race(
+            of(state).pipe(delay(dueTime)),
+            action$.pipe(ofType(actions.FLUSH), take(1), mapTo(state))
+          )
+        ),
+        // multicasting last value to multiple subsribers, same as above
+        publishBehavior(undefined),
+        refCount(),
+        filter(Boolean)
+      )
+
+      return merge(
+        // notify store of queued update
+        stateChange$.pipe(mapTo(actions.stateUpdateQueued())),
+
+        // notify store of new pending update
+        stateUpdate$.pipe(mapTo(actions.stateUpdateRequest())),
+
+        // push update to storages
+        stateUpdate$.pipe(
+          // map state into form: { bisonapp-settings: { themeName: { value: 'light' } }, { ... } }
+          map(normalizeToValueProps),
+          // use mergeScan to remember the last successfully stored state in remote storage
+          // https://stackoverflow.com/a/56762907
+          mergeScan(
+            ([_, prevState], newState) => {
+              // handles storage updates
+              const observable$ = merge(
+                // immediately save newState to local storage
+                of(actions.localStorageUpdateRequest(newState)),
+                // and wait for completion
+                action$.pipe(
+                  ofType(
+                    actions.LOCAL_STORAGE_UPDATE_SUCCESS,
+                    actions.LOCAL_STORAGE_UPDATE_FAILURE
+                  ),
+                  take(1),
+                  // don't re-dispatch action
+                  ignoreElements()
+                ),
+                // diff new and previous state
+                of(difference(newState, prevState)).pipe(
+                  // only update if there was any difference
+                  filter(diffState => !isEmpty(diffState)),
+                  // push state diff updates to RemoteStorage
+                  mergeMap(diffState =>
+                    // to ensure an accessToken is in state, listen to state$
+                    state$.pipe(
+                      distinctUntilChanged(),
+                      map(getAccessToken),
+                      filter(Boolean),
+                      take(1),
+                      switchMap(accessToken =>
+                        ajax({
+                          url: getBaseUrl(accessToken).concat('/settings'),
+                          // url: getBaseUrl(accessToken).concat('/settingsERROR'),
+                          method: 'PUT',
+                          headers: {
+                            ...commonHeaders,
+                            Authorization: `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json',
+                          },
+                          body: diffState,
+                        }).pipe(
+                          pluck('response'),
+                          map(response =>
+                            actions.remoteStorageUpdateSuccess(
+                              response,
+                              diffState
+                            )
+                          ),
+                          catchError(
+                            handleAjaxError(
+                              action$,
+                              actions.remoteStorageUpdateFailure
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+
+              return concat(observable$, of(actions.stateUpdateSuccess())).pipe(
+                // use multicast to use source stream without causing multiple
+                // subscriptions to the source stream
+                multicast(new Subject(), source$ =>
+                  source$.pipe(
+                    // use withLatestFrom to update prevState based on remote
+                    // storage update success - the next request should use the
+                    // last state that was successfully stored in remote storage
+                    withLatestFrom(
+                      source$.pipe(
+                        // filter out undefined actions (initial value)
+                        filter(Boolean),
+                        ofType(actions.REMOTE_STORAGE_UPDATE_SUCCESS),
+                        take(1),
+                        // if remote storage update succeeded, update state
+                        mapTo(newState),
+                        // tap((state) => console.log('HERE - END', state)),
+                        startWith(prevState)
+                        // tap((state) => console.log('HERE - STARTWITH', state)),
+                      )
+                    )
+                  )
+                )
+              )
+            },
+            // start with initialState after debounce (race delay), otherwise it could be lost
+            [undefined, normalizeToValueProps(initialState)],
+            // process only 1 request at a time
+            1
+          ),
+          map(([action]) => action),
+          filter(Boolean)
+        )
+      ).pipe(
+        // stop persistence after purging or new rehydration request (both also reset reducer state)
+        // to avoid leaks, takeUntil should generally be the last operator in seq
+        takeUntil(action$.pipe(ofType(actions.PURGE, actions.REHYDRATE)))
+      )
+    })
+  )
+
+// flush current update queue
+const flushEpic = (getPersistState: StateSelector) => (action$, state$) =>
+  action$.pipe(
+    ofType(actions.FLUSH),
+    exhaustMap(() =>
+      state$.pipe(
+        distinctUntilChanged(),
+        map(getPersistState),
+        map(
+          persist =>
+            persist.isUpdateQueued === false && persist.pendingUpdateCount === 0
+        ),
+        filter(Boolean),
+        take(1),
+        mapTo(actions.flushSuccess())
+      )
+    )
+  )
+
+// orchestrates sequential access to local storage
+const localStorageEpic = (storage: { [string]: any }, storageKey: string) => (
+  action$,
+  state$
+) =>
+  action$.pipe(
+    ofType(
+      actions.LOCAL_STORAGE_FETCH_REQUEST,
+      actions.LOCAL_STORAGE_UPDATE_REQUEST,
+      actions.PURGE
+    ),
+    // process requests sequentially with concatMap
+    concatMap(action => {
+      switch (action.type) {
+        case actions.LOCAL_STORAGE_FETCH_REQUEST:
+          return from(storage.getItem(storageKey)).pipe(
+            map(item => (item != null ? JSON.parse(item) : {})),
+            map(actions.localStorageFetchSuccess),
+            catchError(error => of(actions.localStorageFetchFailure(error)))
+          )
+        case actions.LOCAL_STORAGE_UPDATE_REQUEST:
+          return from(
+            storage.setItem(storageKey, JSON.stringify(action.payload))
+          ).pipe(
+            map(actions.localStorageUpdateSuccess),
+            catchError(error => of(actions.localStorageUpdateFailure(error)))
+          )
+        case actions.PURGE:
+          return from(storage.removeItem(storageKey)).pipe(
+            map(actions.localStoragePurgeSuccess),
+            catchError(error => of(actions.localStoragePurgeFailure(error)))
+          )
+      }
+    })
+  )
+
+// orchestrates access to remote storage
+const remoteStorageEpic = (
+  commonHeaders: Headers,
+  getAccessToken: StateSelector,
+  getBaseUrl: UrlResolver,
+  handleAjaxError: AjaxErrorHandler
+) => (action$, state$, { ajax }) =>
+  action$.pipe(
+    ofType(actions.REMOTE_STORAGE_FETCH_REQUEST),
+    map(props => ({
+      ...props,
+      accessToken: getAccessToken(state$.value),
+    })),
+    // if request is still ongoing, use its result
+    exhaustMap(({ accessToken, ...action }) =>
+      accessToken == null
+        ? of(actions.remoteStorageFetchFailure({ message: 'No access token' }))
+        : ajax({
+            url: getBaseUrl(accessToken).concat('/settings'),
+            headers: {
+              ...commonHeaders,
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }).pipe(
+            pluck('response'),
+            map(actions.remoteStorageFetchSuccess),
+            catchError(
+              handleAjaxError(action$, actions.remoteStorageFetchFailure)
+            )
+          )
+    )
+  )
+
+const DEFAULT_PERSIST_DEBOUNCE_TIME = 5000
+
+const rootEpic = (config: RemotePersistConfig) => {
+  if (!config) throw new Error('config is required for remote persist epic')
+
+  const commonHeaders = config.commonHeaders != null ? config.commonHeaders : {}
+  const persistDebounceTime =
+    config.persistDebounceTime != null
+      ? config.persistDebounceTime
+      : DEFAULT_PERSIST_DEBOUNCE_TIME
+
+  return combineEpics(
+    createPersistEpic(
+      config.persistSelectors,
+      commonHeaders,
+      config.getAccessToken,
+      config.getBaseUrl,
+      config.getPersistState,
+      config.handleAjaxError,
+      persistDebounceTime
+    ),
+    createRehydrateEpic(config.rehydrateSelectors),
+    flushEpic(config.getPersistState),
+    localStorageEpic(config.storage, config.localStorageKey),
+    remoteStorageEpic(
+      commonHeaders,
+      config.getAccessToken,
+      config.getBaseUrl,
+      config.handleAjaxError
+    )
+  )
+}
+
+export default rootEpic
+
+// Helpers
+
+// map state into form: { bisonapp-settings: { themeName: { value: 'light' } }, { ... } }
+const normalizeToValueProps = object =>
+  Object.entries(object).reduce(
+    (acc, [key, val]) => ({
+      ...acc,
+      [key]: Object.entries(val).reduce(
+        (acc2, [key2, val2]) => ({ ...acc2, [key2]: { value: val2 } }),
+        {}
+      ),
+    }),
+    {}
+  )
+
+/**
+ * Deep diff between two object, using lodash
+ * @param  {Object} object Object compared
+ * @param  {Object} base   Object to compare with
+ * @return {Object}        Return a new object who represent the diff
+ */
+function difference(object, base) {
+  if (!base) return object
+  return transform(object, (result, value, key) => {
+    if (!isEqual(value, base[key])) {
+      result[key] =
+        isObject(value) && isObject(base[key])
+          ? difference(value, base[key])
+          : value
+    }
+  })
+}
