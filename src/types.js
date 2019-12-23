@@ -12,11 +12,11 @@ export type AjaxErrorHandler = (
   action$: any,
   errorAction: (error: any) => any
 ) => any
-export type Headers = { [key: string]: string }
+export type HeadersSelector = () => { [key: string]: string }
 export type UrlResolver = any => string
 
 export type RemotePersistConfig = {
-  commonHeaders?: Headers,
+  getCommonHeaders?: HeadersSelector,
   getAccessToken: StateSelector,
   getBaseUrl: UrlResolver,
   getPersistState: StateSelector,

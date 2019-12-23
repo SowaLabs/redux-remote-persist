@@ -11,7 +11,7 @@ Persist and rehydrate a redux store to remote and local storage.
 import AsyncStorage from '@react-native-community/async-storage';
 
 const remotePersistEpic = createRemotePersistEpic({
-  commonHeaders: { 'X-App': 'BISON_app' },
+  getCommonHeaders: () => ({ 'X-App': 'BISON_app' }),
   getAccessToken: (state) => state.auth.tokens.accessToken,
   getBaseUrl: (accessToken) => 'https://example-url.com',
   // used internally

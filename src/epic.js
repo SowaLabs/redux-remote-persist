@@ -42,7 +42,7 @@ import type {
   StateSelector,
   KeyStateSelectors,
   AjaxErrorHandler,
-  Headers,
+  HeadersSelector,
   UrlResolver,
   RemotePersistConfig,
 } from './types'
@@ -147,7 +147,7 @@ export const createRehydrateEpic = (rehydrateSelectors: KeyStateSelectors) => (
 // persist states selected by persistSelectors to remote and local storage
 export const createPersistEpic = (
   persistSelectors: KeyStateSelectors,
-  commonHeaders: Headers,
+  getCommonHeaders: HeadersSelector,
   getAccessToken: StateSelector,
   getBaseUrl: UrlResolver,
   getPersistState: StateSelector,
@@ -259,7 +259,7 @@ export const createPersistEpic = (
                           // url: getBaseUrl(accessToken).concat('/settingsERROR'),
                           method: 'PUT',
                           headers: {
-                            ...commonHeaders,
+                            ...getCommonHeaders(),
                             Authorization: `Bearer ${accessToken}`,
                             'Content-Type': 'application/json',
                           },
@@ -383,7 +383,7 @@ const localStorageEpic = (storage: { [string]: any }, storageKey: string) => (
 
 // orchestrates access to remote storage
 const remoteStorageEpic = (
-  commonHeaders: Headers,
+  getCommonHeaders: HeadersSelector,
   getAccessToken: StateSelector,
   getBaseUrl: UrlResolver,
   handleAjaxError: AjaxErrorHandler
@@ -401,7 +401,7 @@ const remoteStorageEpic = (
         : ajax({
             url: getBaseUrl(accessToken).concat('/settings'),
             headers: {
-              ...commonHeaders,
+              ...getCommonHeaders(),
               Authorization: `Bearer ${accessToken}`,
             },
           }).pipe(
@@ -419,7 +419,8 @@ const DEFAULT_PERSIST_DEBOUNCE_TIME = 5000
 const rootEpic = (config: RemotePersistConfig) => {
   if (!config) throw new Error('config is required for remote persist epic')
 
-  const commonHeaders = config.commonHeaders != null ? config.commonHeaders : {}
+  const getCommonHeaders =
+    config.getCommonHeaders != null ? config.getCommonHeaders : () => ({})
   const persistDebounceTime =
     config.persistDebounceTime != null
       ? config.persistDebounceTime
@@ -428,7 +429,7 @@ const rootEpic = (config: RemotePersistConfig) => {
   return combineEpics(
     createPersistEpic(
       config.persistSelectors,
-      commonHeaders,
+      getCommonHeaders,
       config.getAccessToken,
       config.getBaseUrl,
       config.getPersistState,
@@ -439,7 +440,7 @@ const rootEpic = (config: RemotePersistConfig) => {
     flushEpic(config.getPersistState),
     localStorageEpic(config.storage, config.localStorageKey),
     remoteStorageEpic(
-      commonHeaders,
+      getCommonHeaders,
       config.getAccessToken,
       config.getBaseUrl,
       config.handleAjaxError

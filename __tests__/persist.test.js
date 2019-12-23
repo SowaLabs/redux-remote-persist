@@ -179,7 +179,7 @@ describe('Test persist epics', () => {
       // inject debounce time of 4ms
       const output$ = createPersistEpic(
         persistSelectors,
-        {},
+        () => ({}),
         getAccessToken,
         getBaseUrl,
         getPersistState,
@@ -298,7 +298,7 @@ describe('Test persist epics', () => {
       // inject debounce time of 4ms
       const output$ = createPersistEpic(
         persistSelectors,
-        {},
+        () => ({}),
         getAccessToken,
         getBaseUrl,
         getPersistState,
