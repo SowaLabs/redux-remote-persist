@@ -20,11 +20,11 @@ describe('Test persist epics', () => {
       const actionValues = {
         a: actions.rehydrate(),
         b: actions.localStorageFetchSuccess({
-          'bisonapp-settings': {
+          'myapp-settings': {
             themeName: { value: 'dark' },
             timeToRequireAuthentication: { value: 900 },
           },
-          'bisonapp-storereview': { isReviewed: { value: false } },
+          'myapp-storereview': { isReviewed: { value: false } },
         }),
         c: actions.remoteStorageFetchFailure({}),
       }
@@ -41,20 +41,20 @@ describe('Test persist epics', () => {
       const state$ = new StateObservable(hot('a-', stateValues))
 
       const persistSelectors = {
-        'bisonapp-settings': state => state.settings,
-        'bisonapp-storereview': state => state.storeReview,
+        'myapp-settings': state => state.settings,
+        'myapp-storereview': state => state.storeReview,
       }
       const output$ = createRehydrateEpic(persistSelectors)(action$, state$)
 
       expectObservable(output$).toBe('        -(ab)--(cde)', {
         a: actions.remoteStorageFetchRequest(),
         b: actions.localStorageFetchRequest(),
-        c: actions.rehydrateReducer('bisonapp-settings', {
+        c: actions.rehydrateReducer('myapp-settings', {
           themeName: 'dark',
           timeToRequireAuthentication: 900,
           hasNotAgreedTo247Trading: true,
         }),
-        d: actions.rehydrateReducer('bisonapp-storereview', {
+        d: actions.rehydrateReducer('myapp-storereview', {
           isReviewed: false,
         }),
         e: actions.persist({
@@ -69,14 +69,14 @@ describe('Test persist epics', () => {
       const actionValues = {
         a: actions.rehydrate(),
         b: actions.localStorageFetchSuccess({
-          'bisonapp-settings': {
+          'myapp-settings': {
             themeName: { value: 'dark' },
             timeToRequireAuthentication: { value: 900 },
           },
-          'bisonapp-storereview': { isReviewed: { value: false } },
+          'myapp-storereview': { isReviewed: { value: false } },
         }),
         c: actions.remoteStorageFetchSuccess({
-          'bisonapp-settings': {
+          'myapp-settings': {
             themeName: { value: 'light' },
             hasNotAgreedTo247Trading: { value: false },
           },
@@ -95,25 +95,25 @@ describe('Test persist epics', () => {
       const state$ = new StateObservable(hot('a-', stateValues))
 
       const persistSelectors = {
-        'bisonapp-settings': state => state.settings,
-        'bisonapp-storereview': state => state.storeReview,
+        'myapp-settings': state => state.settings,
+        'myapp-storereview': state => state.storeReview,
       }
       const output$ = createRehydrateEpic(persistSelectors)(action$, state$)
 
       expectObservable(output$).toBe('        -(ab)--(cde)', {
         a: actions.remoteStorageFetchRequest(),
         b: actions.localStorageFetchRequest(),
-        c: actions.rehydrateReducer('bisonapp-settings', {
+        c: actions.rehydrateReducer('myapp-settings', {
           themeName: 'light',
           timeToRequireAuthentication: 900,
           hasNotAgreedTo247Trading: false,
         }),
-        d: actions.rehydrateReducer('bisonapp-storereview', {
+        d: actions.rehydrateReducer('myapp-storereview', {
           isReviewed: false,
         }),
         e: actions.persist({
           // values from remoteStorageFetchSuccess action
-          'bisonapp-settings': {
+          'myapp-settings': {
             themeName: 'light',
             hasNotAgreedTo247Trading: false,
           },
@@ -126,7 +126,7 @@ describe('Test persist epics', () => {
     scheduler.run(({ hot, cold, expectObservable }) => {
       const actionValues = {
         // start persisting with remote state (remote storage) as initial value
-        a: actions.persist({ 'bisonapp-settings': { themeName: 'light' } }),
+        a: actions.persist({ 'myapp-settings': { themeName: 'light' } }),
         b: actions.localStorageUpdateSuccess(),
         c: actions.flush(),
         d: actions.localStorageUpdateSuccess(),
@@ -167,8 +167,8 @@ describe('Test persist epics', () => {
           }),
       }
       const persistSelectors = {
-        'bisonapp-settings': state => state.settings,
-        'bisonapp-storereview': state => state.storeReview,
+        'myapp-settings': state => state.settings,
+        'myapp-storereview': state => state.storeReview,
       }
       const getAccessToken = state => state.auth.tokens.accessToken
       const getBaseUrl = () => ''
@@ -193,11 +193,11 @@ describe('Test persist epics', () => {
         a: actions.stateUpdateQueued(),
         b: actions.stateUpdateRequest(),
         c: actions.localStorageUpdateRequest({
-          'bisonapp-settings': {
+          'myapp-settings': {
             themeName: { value: 'light' },
             timeToRequireAuthentication: { value: 900 },
           },
-          'bisonapp-storereview': {
+          'myapp-storereview': {
             isReviewed: { value: false },
           },
         }),
@@ -205,10 +205,10 @@ describe('Test persist epics', () => {
         d: actions.remoteStorageUpdateSuccess(
           {},
           {
-            'bisonapp-settings': {
+            'myapp-settings': {
               timeToRequireAuthentication: { value: 900 },
             },
-            'bisonapp-storereview': {
+            'myapp-storereview': {
               isReviewed: { value: false },
             },
           }
@@ -219,18 +219,18 @@ describe('Test persist epics', () => {
         f: actions.stateUpdateQueued(),
         g: actions.stateUpdateRequest(),
         h: actions.localStorageUpdateRequest({
-          'bisonapp-settings': {
+          'myapp-settings': {
             themeName: { value: 'dark' },
             timeToRequireAuthentication: { value: 900 },
           },
-          'bisonapp-storereview': {
+          'myapp-storereview': {
             isReviewed: { value: false },
           },
         }),
         i: actions.remoteStorageUpdateSuccess(
           {},
           {
-            'bisonapp-settings': {
+            'myapp-settings': {
               themeName: { value: 'dark' },
             },
           }
@@ -244,7 +244,7 @@ describe('Test persist epics', () => {
     scheduler.run(({ hot, cold, expectObservable }) => {
       const actionValues = {
         // start persisting with remote state (remote storage) as initial value
-        a: actions.persist({ 'bisonapp-settings': { themeName: 'light' } }),
+        a: actions.persist({ 'myapp-settings': { themeName: 'light' } }),
         b: actions.localStorageUpdateSuccess(),
         c: actions.flush(),
         d: actions.localStorageUpdateSuccess(),
@@ -287,8 +287,8 @@ describe('Test persist epics', () => {
           ),
       }
       const persistSelectors = {
-        'bisonapp-settings': state => state.settings,
-        'bisonapp-storereview': state => state.storeReview,
+        'myapp-settings': state => state.settings,
+        'myapp-storereview': state => state.storeReview,
       }
       const getAccessToken = state => state.auth.tokens.accessToken
       const getBaseUrl = () => ''
@@ -312,11 +312,11 @@ describe('Test persist epics', () => {
         a: actions.stateUpdateQueued(),
         b: actions.stateUpdateRequest(),
         c: actions.localStorageUpdateRequest({
-          'bisonapp-settings': {
+          'myapp-settings': {
             themeName: { value: 'light' },
             timeToRequireAuthentication: { value: 900 },
           },
-          'bisonapp-storereview': {
+          'myapp-storereview': {
             isReviewed: { value: false },
           },
         }),
@@ -327,11 +327,11 @@ describe('Test persist epics', () => {
         f: actions.stateUpdateQueued(),
         g: actions.stateUpdateRequest(),
         h: actions.localStorageUpdateRequest({
-          'bisonapp-settings': {
+          'myapp-settings': {
             themeName: { value: 'dark' },
             timeToRequireAuthentication: { value: 900 },
           },
-          'bisonapp-storereview': {
+          'myapp-storereview': {
             isReviewed: { value: false },
           },
         }),
@@ -339,11 +339,11 @@ describe('Test persist epics', () => {
         i: actions.remoteStorageUpdateSuccess(
           {},
           {
-            'bisonapp-settings': {
+            'myapp-settings': {
               themeName: { value: 'dark' },
               timeToRequireAuthentication: { value: 900 },
             },
-            'bisonapp-storereview': {
+            'myapp-storereview': {
               isReviewed: { value: false },
             },
           }

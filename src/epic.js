@@ -82,8 +82,8 @@ export const createRehydrateEpic = (rehydrateSelectors: KeyStateSelectors) => (
           )
         ).pipe(
           // normalize 'value' props so it can be consumed by reducers; i.e.
-          // from: { bisonapp-settings: { themeName: { value: 'light' } }, { ... } }
-          // into: { bisonapp-settings: { themeName: 'light' }, ... }
+          // from: { myapp-settings: { themeName: { value: 'light' } }, { ... } }
+          // into: { myapp-settings: { themeName: 'light' }, ... }
           map(([{ payload: remoteState = {} }, { payload: localState = {} }]) =>
             [remoteState, localState].map(state =>
               Object.entries(state).reduce(
@@ -221,7 +221,7 @@ export const createPersistEpic = (
 
         // push update to storages
         stateUpdate$.pipe(
-          // map state into form: { bisonapp-settings: { themeName: { value: 'light' } }, { ... } }
+          // map state into form: { myapp-settings: { themeName: { value: 'light' } }, { ... } }
           map(normalizeToValueProps),
           // use mergeScan to remember the last successfully stored state in remote storage
           // https://stackoverflow.com/a/56762907
@@ -452,7 +452,7 @@ export default rootEpic
 
 // Helpers
 
-// map state into form: { bisonapp-settings: { themeName: { value: 'light' } }, { ... } }
+// map state into form: { myapp-settings: { themeName: { value: 'light' } }, { ... } }
 const normalizeToValueProps = object =>
   Object.entries(object).reduce(
     (acc, [key, val]) => ({

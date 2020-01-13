@@ -11,24 +11,24 @@ Persist and rehydrate a redux store to remote and local storage.
 import AsyncStorage from '@react-native-community/async-storage';
 
 const remotePersistEpic = createRemotePersistEpic({
-  getCommonHeaders: () => ({ 'X-App': 'BISON_app' }),
+  getCommonHeaders: () => ({ 'X-App': 'MY_app' }),
   getAccessToken: (state) => state.auth.tokens.accessToken,
   getBaseUrl: (accessToken) => 'https://example-url.com',
   // used internally
   getPersistState: (state) => state.persist,
   handleAjaxError: (action$, errorAction) => (error, source) => of(errorAction(error)),
-  localStorageKey: 'bisonapp',
+  localStorageKey: 'myapp',
   persistDebounceTime: 5000,
   // select states which we want to persist
   persistSelectors: {
-    'bisonapp-settings': (state) => state.settings,
-    'bisonapp-storereview': (state) => state.storeReview,
+    'myapp-settings': (state) => state.settings,
+    'myapp-storereview': (state) => state.storeReview,
   },
   // select states which we want to rehydrate
   rehydrateSelectors: {
-    'bisonapp-settings': (state) => state.settings,
-    'bisonapp-config': (state) => state.config,
-    'bisonapp-storereview': (state) => state.storeReview,
+    'myapp-settings': (state) => state.settings,
+    'myapp-config': (state) => state.config,
+    'myapp-storereview': (state) => state.storeReview,
   },
   storage: AsyncStorage,
 });
@@ -49,10 +49,10 @@ import storeReview from './reducers/storeReview';
 // root reducer
 const appReducer: any = combineReducers({
   // remote persist reducers
-  config: remotePersistReducer({ key: 'bisonapp-config' }, config), // read-only state
-  settings: remotePersistReducer({ key: 'bisonapp-settings' }, settings),
-  // WARNING: use all lower case keys! e.g. 'bisonapp-storereview' (remote supports only all lowercase)
-  storeReview: remotePersistReducer({ key: 'bisonapp-storereview' }, storeReview),
+  config: remotePersistReducer({ key: 'myapp-config' }, config), // read-only state
+  settings: remotePersistReducer({ key: 'myapp-settings' }, settings),
+  // WARNING: use all lower case keys! e.g. 'myapp-storereview' (remote supports only all lowercase)
+  storeReview: remotePersistReducer({ key: 'myapp-storereview' }, storeReview),
 
   // used internally by redux-remote-persist
   persist: remotePersistInternalReducer,
