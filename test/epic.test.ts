@@ -1,22 +1,47 @@
-// @flow
-import { StateObservable } from 'redux-observable'
-import { TestScheduler } from 'rxjs/testing'
-import { of } from 'rxjs'
-import { createPersistEpic, createRehydrateEpic } from '../src/epic'
-import * as actions from '../src/actions'
+import { StateObservable, ActionsObservable } from 'redux-observable';
+import { TestScheduler } from 'rxjs/testing';
+import { of } from 'rxjs';
+import { createPersistEpic, createRehydrateEpic } from '../src/epic';
+import * as actions from '../src/actions';
+import { PersistAction } from '../src/types';
 
+// https://github.com/redux-observable/redux-observable/issues/620#issuecomment-466736942
+type HotFunction = typeof TestScheduler.prototype.createHotObservable;
+
+const hotActions = <T extends PersistAction>(
+  hot: HotFunction,
+  marbles: string,
+  values?: { [marble: string]: T },
+  error?: any,
+) => {
+  const actionInput$ = hot<T>(marbles, values, error);
+  return new ActionsObservable(actionInput$);
+};
+
+const hotState = <T>(
+  hot: HotFunction,
+  marbles: string,
+  initialState: T,
+  values?: { [marble: string]: T },
+  error?: any,
+) => {
+  const stateInput$ = hot<T>(marbles, values, error);
+  return new StateObservable<T>(stateInput$, initialState);
+};
+
+// tests
 describe('Test persist epics', () => {
-  let scheduler
+  let scheduler: TestScheduler;
 
   // instantiate new TestScheduler for each test
   beforeEach(() => {
     scheduler = new TestScheduler((actual, expected) => {
-      expect(actual).toEqual(expected)
-    })
-  })
+      expect(actual).toEqual(expected);
+    });
+  });
 
   it('should rehydrate state from local storage when remote fails', () => {
-    scheduler.run(({ hot, cold, expectObservable }) => {
+    scheduler.run(({ hot, expectObservable }) => {
       const actionValues = {
         a: actions.rehydrate(),
         b: actions.localStorageFetchSuccess({
@@ -27,7 +52,7 @@ describe('Test persist epics', () => {
           'myapp-storereview': { isReviewed: { value: false } },
         }),
         c: actions.remoteStorageFetchFailure({}),
-      }
+      };
       const stateValues = {
         a: {
           settings: {
@@ -35,18 +60,18 @@ describe('Test persist epics', () => {
             hasNotAgreedTo247Trading: true,
           },
         },
-      }
+      };
 
-      const action$ = hot('                   -a---b-c', actionValues)
-      const state$ = new StateObservable(hot('a-', stateValues))
+      const action$ = hotActions(hot, '  -a---b-c', actionValues);
+      const state$ = hotState<any>(hot, 'a-', stateValues.a, stateValues);
 
       const persistSelectors = {
-        'myapp-settings': state => state.settings,
-        'myapp-storereview': state => state.storeReview,
-      }
-      const output$ = createRehydrateEpic(persistSelectors)(action$, state$)
+        'myapp-settings': (state: any) => state.settings,
+        'myapp-storereview': (state: any) => state.storeReview,
+      };
+      const output$ = createRehydrateEpic(persistSelectors)(action$, state$, null as any);
 
-      expectObservable(output$).toBe('        -(ab)--(cde)', {
+      expectObservable(output$).toBe('   -(ab)--(cde)', {
         a: actions.remoteStorageFetchRequest(),
         b: actions.localStorageFetchRequest(),
         c: actions.rehydrateReducer('myapp-settings', {
@@ -60,12 +85,12 @@ describe('Test persist epics', () => {
         e: actions.persist({
           // values from remoteStorageFetchSuccess action → empty
         }),
-      })
-    })
-  })
+      });
+    });
+  });
 
   it('should rehydrate state', () => {
-    scheduler.run(({ hot, cold, expectObservable }) => {
+    scheduler.run(({ hot, expectObservable }) => {
       const actionValues = {
         a: actions.rehydrate(),
         b: actions.localStorageFetchSuccess({
@@ -81,7 +106,7 @@ describe('Test persist epics', () => {
             hasNotAgreedTo247Trading: { value: false },
           },
         }),
-      }
+      };
       const stateValues = {
         a: {
           settings: {
@@ -89,18 +114,18 @@ describe('Test persist epics', () => {
             hasNotAgreedTo247Trading: true,
           },
         },
-      }
+      };
 
-      const action$ = hot('                   -a---b-c', actionValues)
-      const state$ = new StateObservable(hot('a-', stateValues))
+      const action$ = hotActions(hot, '  -a---b-c', actionValues);
+      const state$ = hotState<any>(hot, 'a-', stateValues.a, stateValues);
 
       const persistSelectors = {
-        'myapp-settings': state => state.settings,
-        'myapp-storereview': state => state.storeReview,
-      }
-      const output$ = createRehydrateEpic(persistSelectors)(action$, state$)
+        'myapp-settings': (state: any) => state.settings,
+        'myapp-storereview': (state: any) => state.storeReview,
+      };
+      const output$ = createRehydrateEpic(persistSelectors)(action$, state$, null as any);
 
-      expectObservable(output$).toBe('        -(ab)--(cde)', {
+      expectObservable(output$).toBe('   -(ab)--(cde)', {
         a: actions.remoteStorageFetchRequest(),
         b: actions.localStorageFetchRequest(),
         c: actions.rehydrateReducer('myapp-settings', {
@@ -118,9 +143,9 @@ describe('Test persist epics', () => {
             hasNotAgreedTo247Trading: false,
           },
         }),
-      })
-    })
-  })
+      });
+    });
+  });
 
   it('should persist state', () => {
     scheduler.run(({ hot, cold, expectObservable }) => {
@@ -130,7 +155,7 @@ describe('Test persist epics', () => {
         b: actions.localStorageUpdateSuccess(),
         c: actions.flush(),
         d: actions.localStorageUpdateSuccess(),
-      }
+      };
       const stateValues = {
         // first persist
         a: {
@@ -154,27 +179,26 @@ describe('Test persist epics', () => {
           settings: { themeName: 'dark', timeToRequireAuthentication: 900 },
           storeReview: { isReviewed: false },
         },
-      }
+      };
 
-      const action$ = hot('                   -a------b-------cd', actionValues)
-      const state$ = new StateObservable(hot('a-------------b---', stateValues))
+      const action$ = hotActions(hot, '  -a------b-------cd', actionValues);
+      const state$ = hotState<any>(hot, 'a-------------b---', stateValues.a, stateValues);
       const dependencies = {
-        ajax: params =>
+        ajax: () =>
           // important to emit and complete in the same frame, since we rely on
           // stream completion in epic to dispatch stateUpdateSuccess
           cold('----(a|)', {
             a: { response: {} },
           }),
-      }
+      };
       const persistSelectors = {
-        'myapp-settings': state => state.settings,
-        'myapp-storereview': state => state.storeReview,
-      }
-      const getAccessToken = state => state.auth.tokens.accessToken
-      const getBaseUrl = () => ''
-      const getPersistState = state => state.persist
-      const handleAjaxError = () => (error, source) =>
-        of(actions.remoteStorageUpdateFailure(error))
+        'myapp-settings': (state: any) => state.settings,
+        'myapp-storereview': (state: any) => state.storeReview,
+      };
+      const getAccessToken = (state: any) => state.auth.tokens.accessToken;
+      const getBaseUrl = () => '';
+      const getPersistState = (state: any) => state.persist;
+      const handleAjaxError = () => (error: any) => of(actions.remoteStorageUpdateFailure(error));
 
       // inject debounce time of 4ms
       const output$ = createPersistEpic(
@@ -184,8 +208,8 @@ describe('Test persist epics', () => {
         getBaseUrl,
         getPersistState,
         handleAjaxError,
-        4
-      )(action$, state$, dependencies)
+        4,
+      )(action$, state$, dependencies as any);
 
       // at frame 16, the flush action was dispatched
       expectObservable(output$).toBe('        -a---(bc)(de)-f-(gh)(ij)', {
@@ -211,7 +235,7 @@ describe('Test persist epics', () => {
             'myapp-storereview': {
               isReviewed: { value: false },
             },
-          }
+          },
         ),
         e: actions.stateUpdateSuccess(),
 
@@ -233,12 +257,12 @@ describe('Test persist epics', () => {
             'myapp-settings': {
               themeName: { value: 'dark' },
             },
-          }
+          },
         ),
         j: actions.stateUpdateSuccess(),
-      })
-    })
-  })
+      });
+    });
+  });
 
   it('remote updates should diff with last successful persisted state ', () => {
     scheduler.run(({ hot, cold, expectObservable }) => {
@@ -248,7 +272,7 @@ describe('Test persist epics', () => {
         b: actions.localStorageUpdateSuccess(),
         c: actions.flush(),
         d: actions.localStorageUpdateSuccess(),
-      }
+      };
       const stateValues = {
         // first persist
         a: {
@@ -272,10 +296,10 @@ describe('Test persist epics', () => {
           settings: { themeName: 'dark', timeToRequireAuthentication: 900 },
           storeReview: { isReviewed: false },
         },
-      }
+      };
 
-      const action$ = hot('                   -a----b---------cd', actionValues)
-      const state$ = new StateObservable(hot('a-------------b---', stateValues))
+      const action$ = hotActions(hot, '  -a----b---------cd', actionValues);
+      const state$ = hotState<any>(hot, 'a-------------b---', stateValues.a, stateValues);
       const dependencies = {
         ajax: jest
           .fn()
@@ -283,18 +307,18 @@ describe('Test persist epics', () => {
           .mockReturnValueOnce(
             cold('----(a|)', {
               a: { response: {} },
-            })
+            }),
           ),
-      }
+      };
       const persistSelectors = {
-        'myapp-settings': state => state.settings,
-        'myapp-storereview': state => state.storeReview,
-      }
-      const getAccessToken = state => state.auth.tokens.accessToken
-      const getBaseUrl = () => ''
-      const getPersistState = state => state.persist
-      const handleAjaxError = () => (error, source) =>
-        of(actions.remoteStorageUpdateFailure({ message: 'error' }))
+        'myapp-settings': (state: any) => state.settings,
+        'myapp-storereview': (state: any) => state.storeReview,
+      };
+      const getAccessToken = (state: any) => state.auth.tokens.accessToken;
+      const getBaseUrl = () => '';
+      const getPersistState = (state: any) => state.persist;
+      const handleAjaxError = () => () =>
+        of(actions.remoteStorageUpdateFailure({ message: 'error' }));
       // inject debounce time of 4ms
       const output$ = createPersistEpic(
         persistSelectors,
@@ -303,11 +327,11 @@ describe('Test persist epics', () => {
         getBaseUrl,
         getPersistState,
         handleAjaxError,
-        4
-      )(action$, state$, dependencies)
+        4,
+      )(action$, state$, dependencies as any);
 
       // at frame 11 (c), the flush action was dispatched
-      expectObservable(output$).toBe('        -a---(bc)(de)-f-(gh)(ij)', {
+      expectObservable(output$).toBe('   -a---(bc)(de)-f-(gh)(ij)', {
         // first persist
         a: actions.stateUpdateQueued(),
         b: actions.stateUpdateRequest(),
@@ -346,10 +370,10 @@ describe('Test persist epics', () => {
             'myapp-storereview': {
               isReviewed: { value: false },
             },
-          }
+          },
         ),
         j: actions.stateUpdateSuccess(),
-      })
-    })
-  })
-})
+      });
+    });
+  });
+});
