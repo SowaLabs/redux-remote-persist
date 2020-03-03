@@ -1,6 +1,14 @@
 {
   "version": "0.1.0",
   "license": "MIT",
+  "name": "redux-remote-persist",
+  "author": "Andrej Česen <andrej.cesen@sowalabs.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SowaLabs/redux-remote-persist.git"
+  },
+  "homepage": "https://github.com/SowaLabs/redux-remote-persist",
+  "module": "dist/redux-remote-persist.esm.js",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
   "files": [
@@ -28,9 +36,6 @@
     "bracketSpacing": true,
     "arrowParens": "always"
   },
-  "name": "redux-remote-persist",
-  "author": "Andrej Česen <andrej.cesen@sowalabs.com>",
-  "module": "dist/redux-remote-persist.esm.js",
   "devDependencies": {
     "@types/jest": "^24.9.0",
     "@types/lodash": "^4.14.149",
