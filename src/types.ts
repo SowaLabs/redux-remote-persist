@@ -1,6 +1,6 @@
-import { ActionsObservable } from 'redux-observable';
+import { ActionsObservable, Epic, StateObservable } from 'redux-observable';
 import { Observable } from 'rxjs';
-import { ajax, AjaxError } from 'rxjs/ajax';
+import { ajax, AjaxError, AjaxResponse } from 'rxjs/ajax';
 import * as actions from './actions';
 import { ActionType } from 'safetypings';
 
@@ -12,6 +12,7 @@ export type PersistState = {
 };
 export type PersistAction = ActionType<typeof actions>;
 export type Services = { ajax: typeof ajax };
+export type PersistEpic = Epic<PersistAction, PersistAction, PersistState, Services>;
 
 // storage redux
 export type BasicValueType = number | boolean | string;
@@ -27,8 +28,8 @@ export type AppState = StateType<ValueType>;
 export type AppStateMap = StateMapType<ValueType>;
 
 // config
-export type PersistStateSelector = (state: AppState) => PersistState;
-export type AccessTokenSelector = (state: AppState) => string | undefined | null;
+export type PersistStateSelector = (state: any) => PersistState;
+export type AccessTokenSelector = (state: any) => string | undefined | null;
 export type StateSelector = (state: any) => AppState;
 export type KeyStateSelectors = {
   [key: string]: StateSelector;
@@ -41,6 +42,13 @@ export type HeadersSelector = () => {
   [key: string]: string;
 };
 export type UrlResolver = (arg?: any) => string;
+export type PreAuthAjaxRequestConfig = {
+  ajax: typeof ajax;
+  baseUrl: string;
+  clientId: string;
+  nonce: string;
+  commonHeaders: {};
+};
 
 export interface Storage {
   getItem(key: string, callback?: (error?: Error, result?: string) => void): Promise<string | null>;
@@ -48,11 +56,16 @@ export interface Storage {
   removeItem(key: string, callback?: (error?: Error) => void): Promise<void>;
 }
 
+type RemoteStorageAjax = (
+  action$: ActionsObservable<PersistAction>,
+  state$: StateObservable<any>,
+  dependencies: Services,
+) => Observable<AjaxResponse>;
+
 export type RemotePersistConfig = {
-  getCommonHeaders?: HeadersSelector;
-  getAccessToken: AccessTokenSelector;
-  getBaseUrl: UrlResolver;
   getPersistState: PersistStateSelector;
+  remoteStorageFetchAjax: RemoteStorageAjax;
+  remoteStorageUpdateAjax: (body: {}) => RemoteStorageAjax;
   handleAjaxError: AjaxErrorHandler;
   localStorageKey: string;
   persistDebounceTime?: number;

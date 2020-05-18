@@ -65,11 +65,11 @@ describe('Test persist epics', () => {
       const action$ = hotActions(hot, '  -a---b-c', actionValues);
       const state$ = hotState<any>(hot, 'a-', stateValues.a, stateValues);
 
-      const persistSelectors = {
+      const rehydrateSelectors = {
         'myapp-settings': (state: any) => state.settings,
         'myapp-storereview': (state: any) => state.storeReview,
       };
-      const output$ = createRehydrateEpic(persistSelectors)(action$, state$, null as any);
+      const output$ = createRehydrateEpic({ rehydrateSelectors })(action$, state$, null as any);
 
       expectObservable(output$).toBe('   -(ab)--(cde)', {
         a: actions.remoteStorageFetchRequest(),
@@ -119,11 +119,11 @@ describe('Test persist epics', () => {
       const action$ = hotActions(hot, '  -a---b-c', actionValues);
       const state$ = hotState<any>(hot, 'a-', stateValues.a, stateValues);
 
-      const persistSelectors = {
+      const rehydrateSelectors = {
         'myapp-settings': (state: any) => state.settings,
         'myapp-storereview': (state: any) => state.storeReview,
       };
-      const output$ = createRehydrateEpic(persistSelectors)(action$, state$, null as any);
+      const output$ = createRehydrateEpic({ rehydrateSelectors })(action$, state$, null as any);
 
       expectObservable(output$).toBe('   -(ab)--(cde)', {
         a: actions.remoteStorageFetchRequest(),
@@ -183,33 +183,28 @@ describe('Test persist epics', () => {
 
       const action$ = hotActions(hot, '  -a------b-------cd', actionValues);
       const state$ = hotState<any>(hot, 'a-------------b---', stateValues.a, stateValues);
-      const dependencies = {
-        ajax: () =>
-          // important to emit and complete in the same frame, since we rely on
-          // stream completion in epic to dispatch stateUpdateSuccess
-          cold('----(a|)', {
-            a: { response: {} },
-          }),
-      };
+      const remoteStorageUpdateAjax = () => () =>
+        // important to emit and complete in the same frame, since we rely on
+        // stream completion in epic to dispatch stateUpdateSuccess
+        cold('----(a|)', {
+          a: { response: {} },
+        });
+
       const persistSelectors = {
         'myapp-settings': (state: any) => state.settings,
         'myapp-storereview': (state: any) => state.storeReview,
       };
-      const getAccessToken = (state: any) => state.auth.tokens.accessToken;
-      const getBaseUrl = () => '';
       const getPersistState = (state: any) => state.persist;
       const handleAjaxError = () => (error: any) => of(actions.remoteStorageUpdateFailure(error));
 
       // inject debounce time of 4ms
-      const output$ = createPersistEpic(
+      const output$ = createPersistEpic({
+        remoteStorageUpdateAjax: remoteStorageUpdateAjax as any,
         persistSelectors,
-        () => ({}),
-        getAccessToken,
-        getBaseUrl,
         getPersistState,
         handleAjaxError,
-        4,
-      )(action$, state$, dependencies as any);
+        persistDebounceTime: 4,
+      })(action$, state$, {} as any);
 
       // at frame 16, the flush action was dispatched
       expectObservable(output$).toBe('        -a---(bc)(de)-f-(gh)(ij)', {
@@ -300,35 +295,31 @@ describe('Test persist epics', () => {
 
       const action$ = hotActions(hot, '  -a----b---------cd', actionValues);
       const state$ = hotState<any>(hot, 'a-------------b---', stateValues.a, stateValues);
-      const dependencies = {
-        ajax: jest
-          .fn()
-          .mockReturnValueOnce(cold('----#'))
-          .mockReturnValueOnce(
-            cold('----(a|)', {
-              a: { response: {} },
-            }),
-          ),
-      };
+      const mockAjax = jest
+        .fn()
+        .mockReturnValueOnce(cold('----#'))
+        .mockReturnValueOnce(
+          cold('----(a|)', {
+            a: { response: {} },
+          }),
+        );
+      const remoteStorageUpdateAjax = () => mockAjax;
+
       const persistSelectors = {
         'myapp-settings': (state: any) => state.settings,
         'myapp-storereview': (state: any) => state.storeReview,
       };
-      const getAccessToken = (state: any) => state.auth.tokens.accessToken;
-      const getBaseUrl = () => '';
       const getPersistState = (state: any) => state.persist;
       const handleAjaxError = () => () =>
         of(actions.remoteStorageUpdateFailure({ message: 'error' }));
       // inject debounce time of 4ms
-      const output$ = createPersistEpic(
+      const output$ = createPersistEpic({
+        remoteStorageUpdateAjax: remoteStorageUpdateAjax as any,
         persistSelectors,
-        () => ({}),
-        getAccessToken,
-        getBaseUrl,
         getPersistState,
         handleAjaxError,
-        4,
-      )(action$, state$, dependencies as any);
+        persistDebounceTime: 4,
+      })(action$, state$, {} as any);
 
       // at frame 11 (c), the flush action was dispatched
       expectObservable(output$).toBe('   -a---(bc)(de)-f-(gh)(ij)', {

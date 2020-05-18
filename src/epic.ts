@@ -1,6 +1,5 @@
 import { isEmpty, isEqual, isObject, merge as _merge, transform } from 'lodash';
 import { combineLatest, concat, forkJoin, from, merge, of, race, Subject } from 'rxjs';
-
 import {
   catchError,
   concatMap,
@@ -23,40 +22,28 @@ import {
   takeUntil,
   withLatestFrom,
 } from 'rxjs/operators';
-import { combineEpics, Epic } from 'redux-observable';
+import { combineEpics } from 'redux-observable';
 import { isOfType, isPresent } from 'safetypings';
 
 import * as actions from './actions';
 import {
   AppStateMap,
   AppState,
-  PersistStateSelector,
   StoragePayload,
-  Storage,
-  AccessTokenSelector,
-} from './types';
-
-import {
+  PersistEpic,
   PersistAction,
-  PersistState,
-  Services,
-  KeyStateSelectors,
-  AjaxErrorHandler,
-  HeadersSelector,
-  UrlResolver,
   RemotePersistConfig,
 } from './types';
 
-type PersistEpic = Epic<PersistAction, PersistAction, PersistState, Services>;
+type RemotePersistConfigRequired = Required<RemotePersistConfig>;
 
 // Rehydrate states selected by rehydrateSelectors from local and remote storage
 // in order: state < localState < remoteState.
 // Local storage is useful when a new property is not yet persisted by remote storage
 // and so can still have the persistence behavior.
-export const createRehydrateEpic = (rehydrateSelectors: KeyStateSelectors): PersistEpic => (
-  action$,
-  state$,
-) =>
+export const createRehydrateEpic = ({
+  rehydrateSelectors,
+}: Pick<RemotePersistConfigRequired, 'rehydrateSelectors'>): PersistEpic => (action$, state$) =>
   action$.pipe(
     filter(isOfType(actions.REHYDRATE)),
     switchMap(() =>
@@ -139,15 +126,20 @@ export const createRehydrateEpic = (rehydrateSelectors: KeyStateSelectors): Pers
   );
 
 // persist states selected by persistSelectors to remote and local storage
-export const createPersistEpic = (
-  persistSelectors: KeyStateSelectors,
-  getCommonHeaders: HeadersSelector,
-  getAccessToken: AccessTokenSelector,
-  getBaseUrl: UrlResolver,
-  getPersistState: PersistStateSelector,
-  handleAjaxError: AjaxErrorHandler,
-  dueTime: number,
-): PersistEpic => (action$, state$, { ajax }) =>
+export const createPersistEpic = ({
+  remoteStorageUpdateAjax,
+  persistSelectors,
+  getPersistState,
+  handleAjaxError,
+  persistDebounceTime,
+}: Pick<
+  RemotePersistConfigRequired,
+  | 'remoteStorageUpdateAjax'
+  | 'persistSelectors'
+  | 'getPersistState'
+  | 'handleAjaxError'
+  | 'persistDebounceTime'
+>): PersistEpic => (action$, state$, services) =>
   // use combineLatest - combines latest items emitted by each observable (all reducers that are to be persisted)
   // https://medium.com/swift-india/rxswift-combining-operators-combinelatest-zip-and-withlatestfrom-521d2eca5460
   // https://rxjs-dev.firebaseapp.com/api/index/function/combineLatest
@@ -195,7 +187,7 @@ export const createPersistEpic = (
         // debounce
         switchMap((state) =>
           race(
-            of(state).pipe(delay(dueTime)),
+            of(state).pipe(delay(persistDebounceTime)),
             action$.pipe(filter(isOfType(actions.FLUSH)), take(1), mapTo(state)),
           ),
         ),
@@ -242,30 +234,10 @@ export const createPersistEpic = (
                   mergeMap((
                     diffState, // to ensure an accessToken is in state, listen to state$
                   ) =>
-                    state$.pipe(
-                      distinctUntilChanged(),
-                      map(getAccessToken),
-                      filter(isPresent),
-                      take(1),
-                      switchMap((accessToken) =>
-                        ajax({
-                          url: getBaseUrl(accessToken).concat('/settings'),
-                          // url: getBaseUrl(accessToken).concat('/settingsERROR'),
-                          method: 'PUT',
-                          headers: {
-                            ...getCommonHeaders(),
-                            Authorization: `Bearer ${accessToken}`,
-                            'Content-Type': 'application/json',
-                          },
-                          body: diffState,
-                        }).pipe(
-                          pluck('response'),
-                          map((response) =>
-                            actions.remoteStorageUpdateSuccess(response, diffState),
-                          ),
-                          catchError(handleAjaxError(action$, actions.remoteStorageUpdateFailure)),
-                        ),
-                      ),
+                    remoteStorageUpdateAjax(diffState)(action$, state$, services).pipe(
+                      pluck('response'),
+                      map((response) => actions.remoteStorageUpdateSuccess(response, diffState)),
+                      catchError(handleAjaxError(action$, actions.remoteStorageUpdateFailure)),
                     ),
                   ),
                 ),
@@ -317,7 +289,9 @@ export const createPersistEpic = (
   );
 
 // flush current update queue
-const flushEpic = (getPersistState: PersistStateSelector): PersistEpic => (action$, state$) =>
+const flushEpic = ({
+  getPersistState,
+}: Pick<RemotePersistConfigRequired, 'getPersistState'>): PersistEpic => (action$, state$) =>
   action$.pipe(
     filter(isOfType(actions.FLUSH)),
     exhaustMap(() =>
@@ -333,7 +307,10 @@ const flushEpic = (getPersistState: PersistStateSelector): PersistEpic => (actio
   );
 
 // orchestrates sequential access to local storage
-const localStorageEpic = (storage: Storage, storageKey: string): PersistEpic => (action$) =>
+const localStorageEpic = ({
+  storage,
+  localStorageKey,
+}: Pick<RemotePersistConfigRequired, 'storage' | 'localStorageKey'>): PersistEpic => (action$) =>
   action$.pipe(
     filter(
       isOfType([
@@ -346,18 +323,18 @@ const localStorageEpic = (storage: Storage, storageKey: string): PersistEpic => 
     concatMap((action) => {
       switch (action.type) {
         case actions.LOCAL_STORAGE_FETCH_REQUEST:
-          return from(storage.getItem(storageKey)).pipe(
+          return from(storage.getItem(localStorageKey)).pipe(
             map((item) => (item != null ? JSON.parse(item) : {})),
             map(actions.localStorageFetchSuccess),
             catchError((error) => of(actions.localStorageFetchFailure(error))),
           );
         case actions.LOCAL_STORAGE_UPDATE_REQUEST:
-          return from(storage.setItem(storageKey, JSON.stringify(action.payload))).pipe(
+          return from(storage.setItem(localStorageKey, JSON.stringify(action.payload))).pipe(
             map(actions.localStorageUpdateSuccess),
             catchError((error) => of(actions.localStorageUpdateFailure(error))),
           );
         case actions.PURGE:
-          return from(storage.removeItem(storageKey)).pipe(
+          return from(storage.removeItem(localStorageKey)).pipe(
             map(actions.localStoragePurgeSuccess),
             catchError((error) => of(actions.localStoragePurgeFailure(error))),
           );
@@ -366,62 +343,37 @@ const localStorageEpic = (storage: Storage, storageKey: string): PersistEpic => 
   );
 
 // orchestrates access to remote storage
-const remoteStorageEpic = (
-  getCommonHeaders: HeadersSelector,
-  getAccessToken: AccessTokenSelector,
-  getBaseUrl: UrlResolver,
-  handleAjaxError: AjaxErrorHandler,
-): PersistEpic => (action$, state$, { ajax }) =>
+const remoteStorageEpic = ({
+  remoteStorageFetchAjax,
+  handleAjaxError,
+}: Pick<
+  RemotePersistConfigRequired,
+  'remoteStorageFetchAjax' | 'handleAjaxError'
+>): PersistEpic => (action$, state$, services) =>
   action$.pipe(
     filter(isOfType(actions.REMOTE_STORAGE_FETCH_REQUEST)),
-    map((props) => ({
-      ...props,
-      accessToken: getAccessToken(state$.value),
-    })),
-    // if request is still ongoing, use its result
-    exhaustMap(({ accessToken }) =>
-      accessToken == null
-        ? of(actions.remoteStorageFetchFailure({ message: 'No access token' }))
-        : ajax({
-            url: getBaseUrl(accessToken).concat('/settings'),
-            headers: {
-              ...getCommonHeaders(),
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }).pipe(
-            pluck('response'),
-            map(actions.remoteStorageFetchSuccess),
-            catchError(handleAjaxError(action$, actions.remoteStorageFetchFailure)),
-          ),
+    switchMap(() =>
+      remoteStorageFetchAjax(action$, state$, services).pipe(
+        pluck('response'),
+        map(actions.remoteStorageFetchSuccess),
+        // pipe off outside the inner ajax to handle errors in both observables
+        catchError(handleAjaxError(action$, actions.remoteStorageFetchFailure)),
+      ),
     ),
   );
 
-const DEFAULT_PERSIST_DEBOUNCE_TIME = 5000;
-
 const rootEpic = (config: RemotePersistConfig) => {
-  if (!config) throw new Error('config is required for remote persist epic');
-  const getCommonHeaders = config.getCommonHeaders ?? (() => ({}));
-  const persistDebounceTime = config.persistDebounceTime ?? DEFAULT_PERSIST_DEBOUNCE_TIME;
+  const completeConfig = {
+    ...config,
+    persistDebounceTime: config.persistDebounceTime ?? 5000,
+  };
 
   return combineEpics(
-    createPersistEpic(
-      config.persistSelectors,
-      getCommonHeaders,
-      config.getAccessToken,
-      config.getBaseUrl,
-      config.getPersistState,
-      config.handleAjaxError,
-      persistDebounceTime,
-    ),
-    createRehydrateEpic(config.rehydrateSelectors),
-    flushEpic(config.getPersistState),
-    localStorageEpic(config.storage, config.localStorageKey),
-    remoteStorageEpic(
-      getCommonHeaders,
-      config.getAccessToken,
-      config.getBaseUrl,
-      config.handleAjaxError,
-    ),
+    createPersistEpic(completeConfig),
+    createRehydrateEpic(completeConfig),
+    flushEpic(completeConfig),
+    localStorageEpic(completeConfig),
+    remoteStorageEpic(completeConfig),
   );
 };
 
