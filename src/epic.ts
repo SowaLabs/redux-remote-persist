@@ -1,5 +1,5 @@
 import { isEmpty, isEqual, isObject, merge as _merge, transform } from 'lodash';
-import { combineLatest, concat, forkJoin, from, merge, of, race, Subject } from 'rxjs';
+import { combineLatest, concat, forkJoin, from, merge, of, race, Subject, EMPTY } from 'rxjs';
 import {
   catchError,
   concatMap,
@@ -46,7 +46,7 @@ export const createRehydrateEpic = ({
 }: Pick<RemotePersistConfigRequired, 'rehydrateSelectors'>): PersistEpic => (action$, state$) =>
   action$.pipe(
     filter(isOfType(actions.REHYDRATE)),
-    switchMap(() =>
+    switchMap((rehydrateAction) =>
       merge(
         // first fetch from remote and local storage
         of(actions.remoteStorageFetchRequest(), actions.localStorageFetchRequest()),
@@ -115,9 +115,11 @@ export const createRehydrateEpic = ({
                   ),
                 ),
               ),
+              // notify any observers
+              of(actions.rehydrateSuccess()),
               // start persisting with remoteState as initial value, since
               // we first want to update remote storage with rehydrated state
-              of(actions.persist(remoteState)),
+              rehydrateAction.meta.manualPersist ? EMPTY : of(actions.persist(remoteState)),
             ),
           ),
         ),

@@ -71,7 +71,7 @@ describe('Test persist epics', () => {
       };
       const output$ = createRehydrateEpic({ rehydrateSelectors })(action$, state$, null as any);
 
-      expectObservable(output$).toBe('   -(ab)--(cde)', {
+      expectObservable(output$).toBe('   -(ab)--(cdef)', {
         a: actions.remoteStorageFetchRequest(),
         b: actions.localStorageFetchRequest(),
         c: actions.rehydrateReducer('myapp-settings', {
@@ -82,7 +82,8 @@ describe('Test persist epics', () => {
         d: actions.rehydrateReducer('myapp-storereview', {
           isReviewed: false,
         }),
-        e: actions.persist({
+        e: actions.rehydrateSuccess(),
+        f: actions.persist({
           // values from remoteStorageFetchSuccess action → empty
         }),
       });
@@ -125,7 +126,7 @@ describe('Test persist epics', () => {
       };
       const output$ = createRehydrateEpic({ rehydrateSelectors })(action$, state$, null as any);
 
-      expectObservable(output$).toBe('   -(ab)--(cde)', {
+      expectObservable(output$).toBe('   -(ab)--(cdef)', {
         a: actions.remoteStorageFetchRequest(),
         b: actions.localStorageFetchRequest(),
         c: actions.rehydrateReducer('myapp-settings', {
@@ -136,7 +137,8 @@ describe('Test persist epics', () => {
         d: actions.rehydrateReducer('myapp-storereview', {
           isReviewed: false,
         }),
-        e: actions.persist({
+        e: actions.rehydrateSuccess(),
+        f: actions.persist({
           // values from remoteStorageFetchSuccess action
           'myapp-settings': {
             themeName: 'light',

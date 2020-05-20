@@ -10,8 +10,10 @@ export const FLUSH = 'PERSIST::FLUSH';
 export const FLUSH_SUCCESS = 'PERSIST::FLUSH_SUCCESS';
 export const PURGE = 'PERSIST::PURGE';
 export const REHYDRATE_REDUCER = 'PERSIST::REHYDRATE_REDUCER';
+export const REHYDRATE_SUCCESS = 'PERSIST::REHYDRATE_SUCCESS';
 
-export const rehydrate = () => ({ type: REHYDRATE } as const);
+export const rehydrate = (meta: { manualPersist?: boolean } = { manualPersist: false }) =>
+  ({ type: REHYDRATE, meta } as const);
 export const persist = (initialState: AppStateMap) => ({ type: PERSIST, initialState } as const);
 export const flush = () => ({ type: FLUSH } as const);
 export const flushSuccess = () => ({ type: FLUSH_SUCCESS } as const);
@@ -22,6 +24,7 @@ export const rehydrateReducer = (key: string, payload: AppState) =>
     payload,
     key,
   } as const);
+export const rehydrateSuccess = () => ({ type: REHYDRATE_SUCCESS } as const);
 
 // used internally to know when we are updating the state
 export const STATE_UPDATE_QUEUED = 'PERSIST::STATE_UPDATE_QUEUED';
