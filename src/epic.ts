@@ -21,6 +21,7 @@ import {
   take,
   takeUntil,
   withLatestFrom,
+  tap,
 } from 'rxjs/operators';
 import { combineEpics } from 'redux-observable';
 import { isOfType, isPresent } from 'safetypings';
@@ -116,7 +117,7 @@ export const createRehydrateEpic = ({
                 ),
               ),
               // notify any observers
-              of(actions.rehydrateSuccess()),
+              of(actions.rehydrateSuccess()).pipe(tap(() => rehydrateAction.meta.callback?.())),
               // start persisting with remoteState as initial value, since
               // we first want to update remote storage with rehydrated state
               rehydrateAction.meta.manualPersist ? EMPTY : of(actions.persist(remoteState)),
