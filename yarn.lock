@@ -5074,9 +5074,10 @@ safe-regex@^1.1.0:
   resolved "https://registry.yarnpkg.com/safer-buffer/-/safer-buffer-2.1.2.tgz#44fa161b0187b9549dd84bb91802f9bd8385cd6a"
   integrity sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==
 
-"safetypings@https://github.com/SowaLabs/safetypings.git#f99c46d":
+safetypings@^0.1.0:
   version "0.1.0"
-  resolved "https://github.com/SowaLabs/safetypings.git#f99c46dc8678f1e48b412094adc374808bb5505b"
+  resolved "https://registry.yarnpkg.com/safetypings/-/safetypings-0.1.0.tgz#c6f077b9508ce16aee546b3c568523bd848b607b"
+  integrity sha512-ZCVtdmpOCZ0iauGQNQSlNrtr4Vpcie4Kf3XHQ2zGejJH7+yUxQ49QkGw1LQVeTrbWsGg7Wla3+EtzE8mwPugcw==
 
 sane@^4.0.3:
   version "4.1.0"

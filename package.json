@@ -55,6 +55,6 @@
   "dependencies": {
     "lodash": "^4.17.15",
     "lodash-es": "^4.17.15",
-    "safetypings": "https://github.com/SowaLabs/safetypings.git#f99c46d"
+    "safetypings": "^0.1.0"
   }
 }
