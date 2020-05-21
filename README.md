@@ -3,6 +3,7 @@
 Persist and rehydrate a redux store to remote and local storage.
 
 ## Usage
+
 `yarn add redux-persist`
 
 1. Add epic to `redux-observable`:
@@ -11,11 +12,11 @@ Persist and rehydrate a redux store to remote and local storage.
 import AsyncStorage from '@react-native-community/async-storage';
 
 const remotePersistEpic = createRemotePersistEpic({
-  getCommonHeaders: () => ({ 'X-App': 'MY_app' }),
-  getAccessToken: (state) => state.auth.tokens.accessToken,
-  getBaseUrl: (accessToken) => 'https://example-url.com',
   // used internally
   getPersistState: (state) => state.persist,
+  remoteStorageFetchAjax: (action$, state$, { ajax }) => ajax({ url: '/fetch' }),
+  remoteStorageUpdateAjax: (payload) => (action$, state$, { ajax }) =>
+    ajax({ url: '/update', body: payload }),
   handleAjaxError: (action$, errorAction) => (error, source) => of(errorAction(error)),
   localStorageKey: 'myapp',
   persistDebounceTime: 5000,
@@ -41,7 +42,6 @@ const remotePersistEpic = createRemotePersistEpic({
 
 import { remotePersistInternalReducer, remotePersistReducer } from 'redux-remote-persist';
 
-
 import config from './reducers/config';
 import settings from './reducers/settings';
 import storeReview from './reducers/storeReview';
@@ -63,5 +63,4 @@ const appReducer: any = combineReducers({
 
 ```js
 import { actions } from 'redux-remote-persist';
-
 ```
