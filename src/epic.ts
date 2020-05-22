@@ -208,7 +208,6 @@ export const createPersistEpic = ({
         // push update to storages
         stateUpdate$.pipe(
           // map state into form: { myapp-settings: { themeName: { value: 'light' } }, { ... } }
-          map((state) => state),
           map(normalizeToValueProps),
           // use mergeScan to remember the last successfully stored state in remote storage
           // https://stackoverflow.com/a/56762907
